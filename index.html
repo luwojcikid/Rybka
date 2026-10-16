@@ -1,0 +1,653 @@
+
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lean Fishbone – Generator Ishikawy 6M</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+<style>
+:root {
+  --navy:#172b4d;
+  --blue:#2563eb;
+  --light:#f1f5f9;
+  --border:#dce4ef;
+  --text:#243449;
+  --red:#dc2626;
+}
+* { box-sizing:border-box; }
+body {
+  margin:0;
+  background:var(--light);
+  color:var(--text);
+  font-family:Arial,Helvetica,sans-serif;
+}
+.container { max-width:1450px; margin:auto; padding:22px; }
+header {
+  background:var(--navy);
+  color:white;
+  padding:24px;
+  border-radius:16px;
+  margin-bottom:20px;
+}
+header h1 { margin:6px 0; font-size:28px; }
+header p { margin:0; color:#cbd5e1; }
+.tag { color:#93c5fd; font-size:12px; letter-spacing:2px; }
+.toolbar {
+  display:flex; flex-wrap:wrap; gap:10px;
+  background:white; padding:15px;
+  border-radius:14px; margin-bottom:18px;
+}
+button {
+  cursor:pointer; border:0; border-radius:9px;
+  padding:11px 16px; font-weight:bold;
+  background:#e2e8f0; color:var(--navy);
+}
+button:hover { filter:brightness(.94); }
+.primary { background:var(--blue); color:white; }
+.danger { background:#fee2e2; color:#b91c1c; }
+.green { background:#dcfce7; color:#166534; }
+.panel {
+  background:white; border:1px solid var(--border);
+  padding:20px; border-radius:15px; margin-bottom:18px;
+}
+label { display:block; font-weight:bold; margin-bottom:9px; }
+input,textarea {
+  width:100%; border:1px solid #cbd5e1;
+  padding:12px; border-radius:9px;
+  font:inherit; background:white;
+}
+textarea { resize:vertical; }
+#problem { font-size:19px; font-weight:bold; }
+.diagram-wrap { overflow-x:auto; }
+#fishbone {
+  width:100%; min-width:1000px;
+  height:auto; display:block;
+}
+.grid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:16px;
+}
+.category { margin:0; }
+.category h3 {
+  margin:0 0 14px; font-size:17px;
+  display:flex; align-items:center; gap:9px;
+}
+.dot { width:12px; height:12px; border-radius:50%; }
+.cause {
+  display:flex; gap:7px; align-items:center;
+  margin-bottom:8px;
+}
+.cause input { padding:10px; font-size:13px; }
+.cause button { padding:9px 12px; }
+.add-row { display:flex; gap:8px; margin-top:13px; }
+.add-row input { min-width:0; }
+.note {
+  font-size:13px; color:#64748b;
+  line-height:1.6;
+}
+#status { font-size:13px; margin:8px 0; color:#475569; }
+@media(max-width:950px) {
+  .grid { grid-template-columns:repeat(2,1fr); }
+}
+@media(max-width:650px) {
+  .grid { grid-template-columns:1fr; }
+  .container { padding:10px; }
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<header>
+  <div class="tag">LEAN MANAGEMENT • ROOT CAUSE ANALYSIS</div>
+  <h1>Diagram Ishikawy – Rybia Ość</h1>
+  <p>Interaktywny generator 6M | Edycja • Zapis • Odczyt • PDF</p>
+</header>
+
+<div class="toolbar">
+  <button class="primary" onclick="exportPDF()">⬇ Eksport PDF</button>
+  <button class="green" onclick="saveJSON()">💾 Zapisz projekt</button>
+  <button onclick="document.getElementById('jsonFile').click()">📂 Wczytaj projekt</button>
+  <button onclick="document.getElementById('pdfFile').click()">📄 Wczytaj PDF</button>
+  <button class="danger" onclick="clearAll()">✕ Wyczyść wszystko</button>
+  <button onclick="loadExample()">Przykład magazynowy</button>
+</div>
+
+<input id="jsonFile" type="file" accept=".json,application/json"
+       hidden onchange="loadJSON(event)">
+<input id="pdfFile" type="file" accept=".pdf,application/pdf"
+       hidden onchange="loadPDF(event)">
+
+<div class="panel">
+  <label for="problem">PROBLEM GŁÓWNY – EFEKT</label>
+  <textarea id="problem" rows="2"
+    placeholder="Np. Zbyt długi czas rozładunku i przyjęcia dostawy"
+    oninput="updateDiagram()"></textarea>
+  <p class="note">Wpisz konkretny problem. Zostanie wyraźnie pokazany w głowie ryby.</p>
+</div>
+
+<div class="panel">
+  <h2>Wizualizacja diagramu 6M</h2>
+  <div class="diagram-wrap">
+    <svg id="fishbone" viewBox="0 0 1500 780"
+         xmlns="http://www.w3.org/2000/svg"
+         aria-label="Diagram Ishikawy"></svg>
+  </div>
+  <p class="note">Diagram aktualizuje się automatycznie po każdej zmianie.</p>
+</div>
+
+<h2>Przyczyny – edycja kategorii 6M</h2>
+<div id="categories" class="grid"></div>
+
+<div class="panel" style="margin-top:20px">
+  <label for="conclusion">Wnioski / działania korygujące</label>
+  <textarea id="conclusion" rows="4"
+    placeholder="Wpisz wnioski, proponowane działania i osoby odpowiedzialne..."></textarea>
+</div>
+
+<div id="status" role="status"></div>
+<p class="note">
+  Pliki JSON zapewniają pełną edycję. PDF wygenerowany przez tę wersję
+  zawiera dodatkowo zapis projektu, dzięki czemu można go ponownie
+  zaimportować. Import dowolnego obcego PDF nie jest gwarantowany.
+  Do eksportu i importu PDF wymagane jest połączenie z internetem,
+  aby załadować biblioteki.
+</p>
+
+</div>
+
+<script>
+"use strict";
+
+const definitions = [
+  {id:"man",name:"Człowiek",en:"Man",color:"#2563eb"},
+  {id:"machine",name:"Maszyna",en:"Machine",color:"#7c3aed"},
+  {id:"method",name:"Metoda",en:"Method",color:"#0891b2"},
+  {id:"material",name:"Materiał",en:"Material",color:"#ea580c"},
+  {id:"measurement",name:"Pomiar",en:"Measurement",color:"#16a34a"},
+  {id:"environment",name:"Środowisko",en:"Environment",color:"#be185d"}
+];
+
+let causes = Object.fromEntries(
+  definitions.map(d => [d.id,[]])
+);
+
+const $ = id => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+
+function svgElement(tag,attrs={},parent=$("fishbone")) {
+  const el=document.createElementNS(NS,tag);
+  Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,v));
+  parent.appendChild(el);
+  return el;
+}
+
+function line(x1,y1,x2,y2,color,width=2,parent) {
+  return svgElement("line",{
+    x1,y1,x2,y2,stroke:color,
+    "stroke-width":width,"stroke-linecap":"round"
+  },parent);
+}
+
+function rect(x,y,w,h,fill,rx=10,stroke="none",parent) {
+  return svgElement("rect",{
+    x,y,width:w,height:h,rx,fill,stroke
+  },parent);
+}
+
+function text(x,y,value,size=16,color="#334155",weight="normal",
+              anchor="start",parent) {
+  const el=svgElement("text",{
+    x,y,fill:color,"font-size":size,
+    "font-weight":weight,"text-anchor":anchor,
+    "font-family":"Arial, sans-serif"
+  },parent);
+  el.textContent=value;
+  return el;
+}
+
+function wrap(value,maxChars=24) {
+  const words=String(value).trim().split(/\s+/).filter(Boolean);
+  const result=[];
+  let current="";
+  for(const word of words) {
+    if(word.length>maxChars) {
+      if(current) { result.push(current); current=""; }
+      for(let i=0;i<word.length;i+=maxChars)
+        result.push(word.slice(i,i+maxChars));
+    } else if((current+" "+word).trim().length<=maxChars) {
+      current=(current+" "+word).trim();
+    } else {
+      if(current) result.push(current);
+      current=word;
+    }
+  }
+  if(current) result.push(current);
+  return result.length?result:[""];
+}
+
+function renderCategories() {
+  const root=$("categories");
+  root.innerHTML="";
+
+  definitions.forEach(d=>{
+    const card=document.createElement("div");
+    card.className="panel category";
+
+    const title=document.createElement("h3");
+    const dot=document.createElement("span");
+    dot.className="dot";
+    dot.style.background=d.color;
+    title.append(dot,document.createTextNode(
+      d.name+" ("+d.en+")"
+    ));
+    card.appendChild(title);
+
+    causes[d.id].forEach((value,index)=>{
+      const row=document.createElement("div");
+      row.className="cause";
+
+      const input=document.createElement("input");
+      input.value=value;
+      input.setAttribute("aria-label","Edytuj przyczynę");
+      input.oninput=()=>{
+        causes[d.id][index]=input.value;
+        updateDiagram();
+      };
+
+      const remove=document.createElement("button");
+      remove.className="danger";
+      remove.textContent="✕";
+      remove.title="Usuń przyczynę";
+      remove.onclick=()=>{
+        causes[d.id].splice(index,1);
+        renderCategories();
+        updateDiagram();
+      };
+
+      row.append(input,remove);
+      card.appendChild(row);
+    });
+
+    const addRow=document.createElement("div");
+    addRow.className="add-row";
+    const input=document.createElement("input");
+    input.placeholder="Nowa przyczyna...";
+    const add=document.createElement("button");
+    add.className="primary";
+    add.textContent="+ Dodaj";
+
+    const submit=()=>{
+      const value=input.value.trim();
+      if(!value) return;
+      causes[d.id].push(value);
+      renderCategories();
+      updateDiagram();
+    };
+    add.onclick=submit;
+    input.onkeydown=e=>{
+      if(e.key==="Enter") submit();
+    };
+
+    addRow.append(input,add);
+    card.appendChild(addRow);
+    root.appendChild(card);
+  });
+}
+
+function updateDiagram() {
+  const svg=$("fishbone");
+  svg.innerHTML="";
+
+  // Jasne tło diagramu
+  rect(0,0,1500,780,"#ffffff",0);
+
+  text(48,44,"ANALIZA PRZYCZYN ŹRÓDŁOWYCH",
+       20,"#172b4d","bold");
+  text(48,70,"Metoda 6M – Diagram Ishikawy",
+       14,"#64748b");
+
+  // Główny kręgosłup
+  line(85,400,1150,400,"#334155",7);
+
+  // Ogon
+  line(85,400,38,355,"#94a3b8",4);
+  line(85,400,38,445,"#94a3b8",4);
+
+  // Głowa – większa i wyraźniejsza
+  rect(1140,287,330,226,"#172b4d",23);
+  rect(1155,301,300,40,"#2563eb",9);
+  text(1305,328,"PROBLEM GŁÓWNY",19,
+       "#ffffff","bold","middle");
+
+  const problem=$("problem").value.trim()||
+    "Wpisz problem główny";
+  const problemLines=wrap(problem,26).slice(0,7);
+  const fontSize=problemLines.length>5?16:19;
+  const lineHeight=25;
+  const start=398-(problemLines.length-1)*lineHeight/2;
+
+  problemLines.forEach((s,i)=>{
+    text(1305,start+i*lineHeight,s,fontSize,
+         "#ffffff","bold","middle");
+  });
+
+  // Trzy pary gałęzi – duże odstępy
+  const branches=[
+    {x:310,tipX:180,tipY:155,top:true},
+    {x:310,tipX:180,tipY:645,top:false},
+    {x:670,tipX:540,tipY:155,top:true},
+    {x:670,tipX:540,tipY:645,top:false},
+    {x:1030,tipX:900,tipY:155,top:true},
+    {x:1030,tipX:900,tipY:645,top:false}
+  ];
+
+  definitions.forEach((d,i)=>{
+    const b=branches[i];
+    const sign=b.top?-1:1;
+
+    line(b.x,400,b.tipX,b.tipY,d.color,5);
+
+    // Nagłówek kategorii
+    const headerY=b.top?108:665;
+    rect(b.tipX-115,headerY-25,230,39,d.color,10);
+    text(b.tipX,headerY+1,d.name.toUpperCase(),
+         17,"white","bold","middle");
+
+    const items=causes[d.id].filter(s=>s.trim());
+
+    // Rozmieszczenie przyczyn wzdłuż ości.
+    // Automatycznie zwiększana wysokość diagramu
+    // nie jest potrzebna: przyczyny są zawijane.
+    items.slice(0,8).forEach((item,j)=>{
+      const fraction=(j+1)/(Math.max(items.length,1)+1);
+      const fx=b.tipX+(b.x-b.tipX)*fraction;
+      const fy=b.tipY+(400-b.tipY)*fraction;
+
+      const side=i>=4?1:-1;
+      const endX=fx+side*75;
+      const endY=fy-sign*22;
+
+      line(fx,fy,endX,endY,d.color,2);
+
+      const lines=wrap(item,24).slice(0,3);
+      const anchor=side===1?"start":"end";
+      const tx=endX+side*5;
+
+      lines.forEach((s,k)=>{
+        const ty=b.top
+          ?endY-8-(lines.length-1-k)*15
+          :endY+18+k*15;
+        text(tx,ty,s,12,"#334155","normal",anchor);
+      });
+    });
+
+    if(items.length>8) {
+      text(b.tipX,b.top?138:702,
+           `+ ${items.length-8} dalszych przyczyn`,
+           12,d.color,"bold","middle");
+    }
+  });
+
+  text(48,755,"LEAN MANAGEMENT  |  6M",
+       13,"#94a3b8","bold");
+}
+
+function projectData() {
+  return {
+    app:"lean-fishbone",
+    version:2,
+    problem:$("problem").value,
+    conclusion:$("conclusion").value,
+    causes:JSON.parse(JSON.stringify(causes)),
+    date:new Date().toISOString()
+  };
+}
+
+function applyProject(data) {
+  if(!data||data.app!=="lean-fishbone"||
+     !data.causes||typeof data.causes!=="object")
+    throw new Error("Nieprawidłowy format projektu.");
+
+  $("problem").value=String(data.problem||"");
+  $("conclusion").value=String(data.conclusion||"");
+
+  causes=Object.fromEntries(
+    definitions.map(d=>[
+      d.id,
+      Array.isArray(data.causes[d.id])
+        ?data.causes[d.id].map(String)
+        :[]
+    ])
+  );
+
+  renderCategories();
+  updateDiagram();
+}
+
+function downloadBlob(blob,filename) {
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+
+function saveJSON() {
+  const blob=new Blob(
+    [JSON.stringify(projectData(),null,2)],
+    {type:"application/json;charset=utf-8"}
+  );
+  downloadBlob(blob,"analiza-ishikawa.json");
+  setStatus("Projekt zapisany jako JSON.");
+}
+
+async function loadJSON(event) {
+  const file=event.target.files[0];
+  if(!file)return;
+  try {
+    applyProject(JSON.parse(await file.text()));
+    setStatus("Projekt został wczytany i można go edytować.");
+  } catch(e) {
+    alert("Nie udało się wczytać projektu: "+e.message);
+  }
+  event.target.value="";
+}
+
+function clearAll() {
+  if(!confirm("Wyczyścić problem, przyczyny i wnioski?"))return;
+  $("problem").value="";
+  $("conclusion").value="";
+  causes=Object.fromEntries(definitions.map(d=>[d.id,[]]));
+  renderCategories();
+  updateDiagram();
+  setStatus("Wyczyszczono wszystkie dane.");
+}
+
+function loadExample() {
+  if(!confirm("Zastąpić aktualne dane przykładem?"))return;
+  applyProject({
+    app:"lean-fishbone",
+    problem:"Zbyt długi czas rozładunku i przyjęcia dostawy",
+    conclusion:"Zweryfikować proces manualnego spisywania dostaw oraz możliwości jego digitalizacji.",
+    causes:{
+      man:["Brak jednolitego szkolenia","Duże obciążenie operatorów"],
+      machine:["Niewystarczająca liczba terminali"],
+      method:["Manualne spisywanie dostawy","Podwójne wprowadzanie danych"],
+      material:["Brak etykiet na części palet"],
+      measurement:["Brak pomiaru czasu przyjęcia"],
+      environment:["Ograniczona przestrzeń rozładunku"]
+    }
+  });
+  setStatus("Wczytano przykład magazynowy.");
+}
+
+function setStatus(message) {
+  $("status").textContent=message;
+}
+
+// Eksport PDF: wektorowy diagram oraz dodatkowy,
+// możliwy do odzyskania zapis projektu w metadanych.
+async function exportPDF() {
+  if(!window.jspdf) {
+    alert("Biblioteka PDF nie została załadowana.");
+    return;
+  }
+
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF({
+    orientation:"landscape",
+    unit:"mm",
+    format:"a3"
+  });
+
+  const data=projectData();
+
+  // Zakodowany projekt w metadanych PDF.
+  const encoded=btoa(
+    Array.from(new TextEncoder().encode(JSON.stringify(data)),
+      b=>String.fromCharCode(b)).join("")
+  );
+  pdf.setProperties({
+    title:"Diagram Ishikawy – Lean 6M",
+    subject:"LEANFISHBONE_DATA:"+encoded,
+    creator:"Lean Fishbone Generator"
+  });
+
+  pdf.setFont("helvetica","bold");
+  pdf.setFontSize(17);
+  pdf.text("LEAN FISHBONE | ISHIKAWA 6M",14,16);
+
+  // Diagram jako obraz wysokiej rozdzielczości
+  const svg=$("fishbone");
+  const serialized=new XMLSerializer().serializeToString(svg);
+  const blob=new Blob([serialized],{type:"image/svg+xml;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+
+  try {
+    const image=new Image();
+    await new Promise((resolve,reject)=>{
+      image.onload=resolve;
+      image.onerror=reject;
+      image.src=url;
+    });
+
+    const canvas=document.createElement("canvas");
+    canvas.width=3000;
+    canvas.height=1560;
+    const ctx=canvas.getContext("2d");
+    ctx.fillStyle="white";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(image,0,0,canvas.width,canvas.height);
+
+    pdf.addImage(canvas.toDataURL("image/png"),
+                 "PNG",12,23,396,206);
+
+    // Druga strona: pełna lista przyczyn i wnioski.
+    pdf.addPage();
+    let y=18;
+    pdf.setFontSize(16);
+    pdf.text("ANALIZA PRZYCZYN - PELNA LISTA",14,y);
+    y+=12;
+
+    const writeLine=(value,indent=0)=>{
+      const lines=pdf.splitTextToSize(
+        String(value),380-indent
+      );
+      for(const part of lines) {
+        if(y>275) {
+          pdf.addPage();
+          y=18;
+        }
+        pdf.text(part,14+indent,y);
+        y+=6;
+      }
+    };
+
+    pdf.setFontSize(11);
+    writeLine("Problem: "+data.problem);
+    y+=6;
+
+    definitions.forEach(d=>{
+      if(y>260){pdf.addPage();y=18;}
+      pdf.setFont("helvetica","bold");
+      writeLine(d.name+" / "+d.en);
+      pdf.setFont("helvetica","normal");
+      const list=data.causes[d.id];
+      if(!list.length)writeLine("- Brak przyczyn",6);
+      list.forEach((item,i)=>writeLine((i+1)+". "+item,6));
+      y+=4;
+    });
+
+    y+=4;
+    pdf.setFont("helvetica","bold");
+    writeLine("WNIOSKI / DZIALANIA");
+    pdf.setFont("helvetica","normal");
+    writeLine(data.conclusion||"Brak wnioskow.");
+
+    pdf.save("analiza-ishikawa.pdf");
+    setStatus("Wygenerowano PDF wraz z danymi do ponownej edycji.");
+  } catch(e) {
+    alert("Błąd eksportu PDF: "+e.message);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// Import PDF: odczyt danych osadzonych w PDF
+// wygenerowanym przez tę aplikację.
+async function loadPDF(event) {
+  const file=event.target.files[0];
+  if(!file)return;
+
+  try {
+    if(!window.pdfjsLib)
+      throw new Error("Biblioteka odczytu PDF jest niedostępna.");
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc=
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    const buffer=await file.arrayBuffer();
+    const documentPDF=await pdfjsLib.getDocument({
+      data:new Uint8Array(buffer)
+    }).promise;
+
+    const metadata=await documentPDF.getMetadata();
+    const subject=metadata.info?.Subject||"";
+    const prefix="LEANFISHBONE_DATA:";
+
+    if(!subject.startsWith(prefix)) {
+      throw new Error(
+        "Ten PDF nie zawiera edytowalnych danych projektu. "+
+        "Można wczytać PDF utworzony w tej wersji generatora "+
+        "albo plik projektu JSON."
+      );
+    }
+
+    const binary=atob(subject.slice(prefix.length));
+    const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+    const json=new TextDecoder().decode(bytes);
+    applyProject(JSON.parse(json));
+
+    setStatus("Wczytano projekt z PDF. Wszystkie pola można edytować.");
+  } catch(e) {
+    alert("Import PDF: "+e.message);
+  }
+
+  event.target.value="";
+}
+
+renderCategories();
+updateDiagram();
+</script>
+</body>
+</html>
